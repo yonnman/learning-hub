@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Learning Hub</title>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#fbf1f4;--card:#fff;--tx:#3b2a33;--mu:#8a7380;--ac:#b84267;--on:#fff;--ok:#4f9d7a;--bd:#edc0ce}
+@media(prefers-color-scheme:dark){:root{--bg:#1f1519;--card:#2a1d23;--tx:#f6e9ee;--mu:#b99ca9;--ac:#f08fb0;--on:#2a1420;--ok:#7bcaa3;--bd:#43303a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 'Be Vietnam Pro',system-ui,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+main{max-width:920px;margin:0 auto;padding:14px}
+nav{display:flex;gap:8px;margin-bottom:16px;overflow-x:auto}
+nav button{background:var(--card);border:1px solid var(--bd);border-radius:999px;color:var(--tx);font:500 15px inherit;font-family:inherit;padding:8px 18px;cursor:pointer;white-space:nowrap}
+nav button.on{background:var(--ac);color:var(--on);border-color:var(--ac)}
+h2{font-size:20px;margin:0 0 12px}h3{font-size:15px;margin:0 0 8px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:640px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px;margin-bottom:12px}
+.grid .card{margin:0}
+.row{display:flex;align-items:flex-start;gap:10px;padding:7px 0;border-top:1px solid var(--bd)}
+.row:first-of-type{border-top:0}
+.row input{margin-top:5px;accent-color:var(--ok);width:18px;height:18px;flex:none}
+.row span{flex:1;word-break:break-word}
+.done{text-decoration:line-through;color:var(--mu)}
+.mu{color:var(--mu);font-size:14px}
+input[type=text],textarea{width:100%;font:inherit;color:var(--tx);background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:10px;margin-bottom:8px}
+textarea{min-height:64px;resize:vertical}
+button.b{background:var(--ac);color:var(--on);border:0;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}
+button.g{background:none;color:var(--ac);border:1px solid var(--bd);border-radius:8px;padding:6px 10px;font:inherit;font-size:13px;cursor:pointer;margin:6px 6px 0 0}
+button.x{background:none;border:0;color:var(--mu);font-size:18px;cursor:pointer;line-height:1}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+.bar{height:8px;background:var(--bd);border-radius:4px;overflow:hidden;flex:1}
+.bar i{display:block;height:100%;background:var(--ok)}
+.pr{display:flex;align-items:center;gap:10px;margin:6px 0}.pr b{width:34px;font-weight:500}.pr em{font-style:normal;width:44px;text-align:right;color:var(--mu);font-size:13px}
+a{color:var(--ac)}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:10px 16px;border-radius:8px;display:none;max-width:90%}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<div id="toast"></div>
+<script>
+const $ = s => document.querySelector(s);
+let cfg = JSON.parse(localStorage.getItem('cfg') || 'null');
+let D = { items: [], steps: [], tasks: [], today: '' }, tab = 'today';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const fmt = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+
+function toast(m) { const t = $('#toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 3500); }
+async function api(a, d = {}) {
+  const r = await fetch(cfg.url + '?t=' + encodeURIComponent(cfg.token) + '&a=' + a + '&d=' + encodeURIComponent(JSON.stringify(d)));
+  const j = await r.json();
+  if (j.error) throw new Error(j.error);
+  return j;
+}
+async function load() { try { D = await api('list'); } catch (e) { toast(e.message); } render(); }
+async function act(a, d, msg) {
+  if (msg) toast(msg);
+  try { await api(a, d); } catch (e) { toast(e.message); }
+  await load();
+}
+
+function render() {
+  if (!cfg) return $('#app').innerHTML = `<h2>Connect Learning Hub</h2><div class=card>
+    <p class=mu>Paste your Web app link (ending in /exec) and the token you set in Script Properties.</p>
+    <input type=text id=cu placeholder="https://script.google.com/macros/s/.../exec"><input type=text id=ct placeholder="Token">
+    <button class=b data-a=save>Save and open</button></div>`;
+  const tabs = { today: 'Today', learning: 'Learning', reading: 'Reading', stats: 'Progress' };
+  $('#app').innerHTML = '<nav>' + Object.entries(tabs).map(([k, v]) => `<button data-a=tab data-id=${k} class="${tab === k ? 'on' : ''}">${v}</button>`).join('') + '</nav>' + views[tab]();
+}
+
+const views = {
+  today() {
+    const T = D.tasks.filter(x => x.date === D.today);
+    const list = k => T.filter(x => x.kind === k).map(x => `<label class=row><input type=checkbox data-a=tg data-id=${x.id} ${x.done === true ? 'checked' : ''}>
+      <span class="${x.done === true ? 'done' : ''}">${esc(x.text)}</span>${k === 'mini' ? `<button class=x data-a=dt data-id=${x.id} title="Delete">×</button>` : ''}</label>`).join('') || '<p class=mu>Nothing here yet.</p>';
+    return `<h2>Today</h2><div class=grid>
+      <section class=card><h3>Mini tasks</h3><input type=text id=nt placeholder="Jot down a task and press Enter">${list('mini')}</section>
+      <section class=card><h3>Learning</h3>${list('learning')}<button class=g data-a=pull>Pull today's lessons</button></section></div>`;
+  },
+  learning() {
+    const its = D.items.filter(x => x.type === 'learning').reverse();
+    return `<h2>Learning</h2><div class=card><textarea id=ni placeholder="Paste a video link or a note about a skill you want to learn. Add a few lines of content or a transcript for a better AI summary."></textarea>
+      <button class=b data-a=ai>Save</button></div>` + (its.map(i => {
+      const st = D.steps.filter(s => String(s.itemId) === String(i.id));
+      return `<div class=card><b>${i.url ? `<a href="${esc(i.url)}" target=_blank rel=noopener>${esc(i.title || i.url)}</a>` : esc(i.title)}</b>
+        ${i.note && i.note !== i.title ? `<p class=mu>${esc(i.note)}</p>` : ''}${i.summary ? `<p>${esc(i.summary)}</p>` : ''}
+        ${st.map(s => `<div class="row"><span class="${s.status === 'done' ? 'done' : ''}">${s.status === 'done' ? '✅' : '⬜'} ${esc(s.title)} <i class=mu>${esc(s.min)} min</i></span></div>`).join('')}
+        ${i.status !== 'planned' ? `<button class=g data-a=sum data-id=${i.id}>Summarize &amp; plan</button>` : ''}
+        <button class=g data-a=mv data-id=${i.id}>Move to Reading</button><button class=g data-a=di data-id=${i.id}>Delete</button></div>`;
+    }).join('') || '<p class=mu>Nothing saved yet. Send a link to your Telegram bot or paste one above.</p>');
+  },
+  reading() {
+    const its = D.items.filter(x => x.type === 'reading').reverse();
+    return `<h2>Reading</h2><div class=card><input type=text id=ni placeholder="Paste a link to read later"><button class=b data-a=ai>Save</button></div>` +
+      (its.length ? `<div class=card>${its.map(i => `<div class=row><input type=checkbox data-a=rd data-id=${i.id} ${i.status === 'read' ? 'checked' : ''}>
+        <span class="${i.status === 'read' ? 'done' : ''}">${i.url ? `<a href="${esc(i.url)}" target=_blank rel=noopener>${esc(i.title || i.url)}</a>` : esc(i.title)}</span>
+        <button class=x data-a=di data-id=${i.id} title="Delete">×</button></div>`).join('')}</div>` : '<p class=mu>No links to read yet.</p>');
+  },
+  stats() {
+    const t0 = new Date(D.today + 'T00:00'), mon = new Date(t0); mon.setDate(t0.getDate() - (t0.getDay() + 6) % 7);
+    const by = d => D.tasks.filter(x => x.date === d), dn = a => a.filter(x => x.done === true).length;
+    const days = [...Array(7)].map((_, i) => { const d = new Date(mon); d.setDate(mon.getDate() + i); const a = by(fmt(d)); return { l: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][i], n: dn(a), t: a.length }; });
+    let streak = 0; const c = new Date(t0); if (!dn(by(fmt(c)))) c.setDate(c.getDate() - 1);
+    while (dn(by(fmt(c)))) { streak++; c.setDate(c.getDate() - 1); }
+    const plans = D.items.filter(i => D.steps.some(s => String(s.itemId) === String(i.id)));
+    return `<h2>Progress</h2><div class=card><h3>This week · ${streak}-day streak</h3>${days.map(d => `<div class=pr><b>${d.l}</b><div class=bar><i style="width:${d.t ? d.n / d.t * 100 : 0}%"></i></div><em>${d.n}/${d.t}</em></div>`).join('')}</div>
+      <div class=card><h3>Learning roadmaps</h3>${plans.map(i => { const s = D.steps.filter(x => String(x.itemId) === String(i.id)), d = s.filter(x => x.status === 'done').length;
+        return `<div class=pr><span style="flex:0 0 40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.title || i.url)}</span><div class=bar><i style="width:${d / s.length * 100}%"></i></div><em>${d}/${s.length}</em></div>`; }).join('') || '<p class=mu>No roadmaps yet. Open Learning and tap "Summarize &amp; plan".</p>'}</div>`;
+  }
+};
+
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-a]'); if (!b) return;
+  const a = b.dataset.a, id = b.dataset.id;
+  if (a === 'save') { cfg = { url: $('#cu').value.trim(), token: $('#ct').value.trim() }; localStorage.setItem('cfg', JSON.stringify(cfg)); return load(); }
+  if (a === 'tab') { tab = id; render(); if (tab !== 'today') load(); return; }
+  if (a === 'tg') { const t = D.tasks.find(x => String(x.id) === id); t.done = !(t.done === true); try { await api('toggle', { id }); } catch (er) { toast(er.message); } return load(); }
+  if (a === 'dt') return act('delTask', { id });
+  if (a === 'pull') return act('pull', {}, 'Pulling lessons…');
+  if (a === 'ai') { const v = $('#ni').value.trim(); if (!v) return; return act('addItem', { type: tab, text: v }, 'Saving…'); }
+  if (a === 'sum') return act('summarize', { id }, 'Summarizing and building a roadmap…');
+  if (a === 'mv') return act('item', { id, patch: { type: 'reading' } });
+  if (a === 'rd') { const i = D.items.find(x => String(x.id) === id); return act('item', { id, patch: { status: i.status === 'read' ? 'new' : 'read' } }); }
+  if (a === 'di') { if (confirm('Delete this item?')) return act('item', { id, del: 1 }); }
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.id === 'nt' && e.target.value.trim()) act('addTask', { text: e.target.value.trim() });
+});
+cfg ? load() : render();
+</script>
+</body>
+</html>
